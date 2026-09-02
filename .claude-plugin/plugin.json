@@ -1,0 +1,11 @@
+{
+  "name": "research-agents",
+  "version": "0.1.0",
+  "description": "Мультиагентный ресёрч-стек: deep-research, arXiv/Outline/Drive/Sentrux MCP, caveman-сжатие контекста, skill-creator и скиллы сопровождения кода.",
+  "author": { "name": "ydtsv" },
+  "homepage": "https://airi.net",
+  "license": "MIT",
+  "keywords": ["research", "agents", "mcp", "arxiv", "context-compression", "code-quality"],
+  "skills": "./.claude/skills/",
+  "mcpServers": "./.mcp.json"
+}

@@ -1,0 +1,29 @@
+{
+  "mcpServers": {
+    "arxiv": {
+      "command": "arxiv-mcp-server",
+      "args": ["--storage-path", "D:\\research-agents\\data\\arxiv-papers"]
+    },
+    "sentrux": {
+      "command": "D:\\research-agents\\bin\\sentrux.exe",
+      "args": ["--mcp"]
+    },
+    "outline": {
+      "command": "mcp-outline",
+      "args": [],
+      "env": {
+        "OUTLINE_API_KEY": "REPLACE_WITH_OUTLINE_API_KEY",
+        "OUTLINE_API_URL": "https://app.getoutline.com/api"
+      }
+    },
+    "gdrive": {
+      "command": "npx",
+      "args": ["-y", "@isaacphi/mcp-gdrive"],
+      "env": {
+        "CLIENT_ID": "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID",
+        "CLIENT_SECRET": "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_SECRET",
+        "GDRIVE_CREDS_DIR": "D:\\research-agents\\data\\gdrive"
+      }
+    }
+  }
+}

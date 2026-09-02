@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "research-agents",
+  "description": "Мультиагентный стек для автоматизации доменных исследований (по докладу AIRI): скиллы ресёрча, сжатия контекста и сопровождения кода + MCP к arXiv / Outline / Google Drive / Sentrux.",
+  "owner": {
+    "name": "ydtsv",
+    "url": "https://airi.net"
+  },
+  "plugins": [
+    {
+      "name": "research-agents",
+      "description": "deep-research, arXiv MCP, caveman-сжатие, Sentrux, skill-creator и правила сопровождения кода — единым набором.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
