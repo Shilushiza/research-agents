@@ -1,3 +1,10 @@
 data/
 repos/*/target/
 *.log
+__pycache__/
+*.pyc
+.pytest_cache/
+*.aux
+*.out
+*.toc
+*.synctex.gz

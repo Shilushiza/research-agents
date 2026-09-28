@@ -1,0 +1,21 @@
+[submodule "repos/anthropic-skills"]
+	path = repos/anthropic-skills
+	url = https://github.com/anthropics/skills
+[submodule "repos/arxiv-mcp-server"]
+	path = repos/arxiv-mcp-server
+	url = https://github.com/blazickjp/arxiv-mcp-server
+[submodule "repos/caveman"]
+	path = repos/caveman
+	url = https://github.com/JuliusBrussee/caveman
+[submodule "repos/mcp-gdrive"]
+	path = repos/mcp-gdrive
+	url = https://github.com/isaacphi/mcp-gdrive
+[submodule "repos/mcp-outline"]
+	path = repos/mcp-outline
+	url = https://github.com/Vortiago/mcp-outline
+[submodule "repos/rtk"]
+	path = repos/rtk
+	url = https://github.com/rtk-ai/rtk
+[submodule "repos/sentrux"]
+	path = repos/sentrux
+	url = https://github.com/sentrux/sentrux

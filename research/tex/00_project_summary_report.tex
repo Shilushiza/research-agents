@@ -1,0 +1,321 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{xcolor}
+\definecolor{linkblue}{RGB}{30,80,160}
+\usepackage[colorlinks=true, urlcolor=linkblue, linkcolor=black, citecolor=black, breaklinks=true]{hyperref}
+\usepackage{booktabs}
+\usepackage{enumitem}
+
+\title{Отчёт о проделанной работе: privacy-preserving обучение флота роботов}
+\author{Julia Tsvetkova}
+\date{16 сентября 2026}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\section{Контекст и цель}
+
+Отправная точка — R\&D-заявка \emph{Privacy-Preserving Federated Conformal
+Calibration} (MPC + Rényi DP) для Arenadata: калибровка неопределённости VLA-моделей
+на edge-роботах через federated conformal prediction с секьюрной агрегацией
+квантиля non-conformity score. Задача этого этапа работы — (1) оценить реальную
+новизну заявки, (2) при необходимости перенаправить проект в более сильную научную
+постановку, (3) построить исполнимый роадмап, (4) заложить математическую матчасть
+под него, включая доработку MPC-слоя по итогам последнего созвона.
+
+\section{Этап 1: аудит новизны исходной заявки}
+
+Сверка с литературой ([arXiv:2302.06322] FedCP²-QQ, [arXiv:2306.05131] DP-FedCP,
+оба 2023) показала: связка federated conformal prediction + differential privacy
+уже опубликована с 2023 года. Федеративное обучение VLA — тоже закрыто (FedVLA,
+ICCV 2025). Membership inference на VLA-политиках — закрыто в середине 2026
+(две статьи: [arXiv:2605.07088], VLALeaks [arXiv:2606.15165]), причём с разрушительным
+результатом: temporal-signal атака по действиям робота даёт AUC~0.999, а все
+проверенные защиты (DP-SGD, шум, округление, MC dropout) либо не работают, либо
+ломают точность управления.
+
+\textbf{Вывод:} заявленный \guillemotleft research gap\guillemotright{} исходной
+колоды не существует. Открытыми остаются: (C1) реконструкция обучающих данных из
+политики (не просто обнаружение членства), (C2) систематизация того, почему FL/DP
+это не останавливают, (C3) защита, снижающая утечку без потери точности управления
+— именно это прямо названо нерешённой проблемой в VLALeaks.
+
+\section{Этап 2: пивот и 9-месячный роадмап}
+
+Сформулирован новый проект — \emph{Your Robot Remembers Your Home} — с целевыми
+venue USENIX Security / IEEE S\&P (fallback: CCS, NDSS, NeurIPS D\&B, CoRL).
+Роадмап на 13 недель + фаза масштабирования (мес. 4--9):
+
+\begin{center}
+\begin{tabular}{@{}p{2.1cm}p{3.3cm}p{8.5cm}@{}}
+\toprule
+Недели & Фаза & Итог \\
+\midrule
+1--2 & Воспроизвести и прочитать & OpenVLA-7B + LoRA на LIBERO, SR~$\ge$~70\%, one-pager
+  модели угроз \\
+3--6 & Воспроизвести атаки & Action-MSE, temporal-curvature, LiRA — таблица AUC,
+  совпадающая с литературой \\
+7--10 & Реконструкция и защиты & gradient matching (gray-box) + black-box
+  реконструкция; targeted unlearning + латентный регуляризатор $\to$ Парето вне
+  опубликованного фронтира \\
+11--13 & Абляции и статья & 4-стр. workshop-paper подан — временная метка
+  застолблена \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Разделение труда: Julia — ML/робототехника (обучение, атаки, защита, эксперименты);
+научрук из security — формализация модели угроз, методология оценки
+(TPR@low-FPR, shadow-модели), venue-стратегия.
+
+\section{Этап 3: матчасть по федеративному обучению флота}
+
+По запросу «проресёрчить федеративное обучение и как это применимо здесь»
+подготовлено 5 документов (скилл \texttt{deep-research}, репозиторий
+\texttt{D:\textbackslash research-agents}), каждый — обзор области + примеры +
+тезаурус:
+
+\begin{enumerate}[label=\textbf{0\arabic*.}, leftmargin=2.2cm]
+  \item \textbf{FL-основы} — FedAvg [McMahan et al., 2017], non-IID-коррекции,
+        связь с проектом (робот = клиент, что едет в облако — веса или скаляр
+        калибровки, не сырые данные).
+  \item \textbf{Архитектура флота} — три наблюдаемые схемы (fully local /
+        edge-cloud hybrid / fleet-scale пул данных) с примерами (Gemini Robotics
+        On-Device, Tesla FSD, Amazon DeepFleet, Open X-Embodiment/RT-X) и реальной
+        рыночной оценкой Grand View Research: on-premise 73\% / cloud 27\% выручки
+        рынка ИИ-в-робототехнике (2025) — с честной оговоркой, что это доля
+        выручки, не доля архитектур, и таксономия не совпадает 1:1 с нашей.
+  \item \textbf{Shamir / MPC} — секьюрная агрегация Bonawitz et al. 2017;
+        установлено, что MPC-слой исходной заявки — не контрибуция, а прямое
+        применение известного протокола; зафиксирован незакрытый gap —
+        byzantine-роботы.
+  \item \textbf{Методы агрегации} — FedAvg / secure / робастная (Krum, median) /
+        иерархическая / асинхронная со staleness-взвешиванием; предложена
+        client--edge--cloud топология вместо плоской звезды как более реалистичная
+        для бытовых роботов.
+  \item \textbf{Топологии связи} — звезда / иерархическая звезда / decentralized
+        gossip / policy merging; следствие для модели угроз (gray-box vs black-box
+        меняется в зависимости от топологии).
+\end{enumerate}
+
+\section{Этап 4: формализация MPC-слоя по итогам созвона}
+
+По итогам последнего созвона (\guillemotleft хорошенько изучить математику
+процесса и улучшить её\guillemotright) подготовлен документ~06
+(\texttt{06\_prss\_he\_compartmented\_threshold.tex}), формализующий три пункта из
+рабочих заметок:
+
+\begin{itemize}
+  \item \textbf{PRSS} (Cramer--Damgård--Ishai, TCC~2005, [arXiv через citation graph
+        не индексируется — Springer LNCS~3378]) — механизм, которым $N$ участников
+        генерируют свежие маски для суммирования \emph{без} сервера как участника:
+        структура доступа и PRF-ключи определены только над множеством роботов,
+        сервер не получает ключевого материала ни на каком этапе.
+  \item \textbf{Threshold-HE} (threshold Paillier) — альтернатива маскированию:
+        секретный ключ расшифровки сам разделён по Shamir, сервер складывает
+        шифротексты по аддитивному гомоморфизму, расшифровка требует коалиции
+        $t$ участников. Практическое преимущество для роботов с нерегулярным
+        расписанием: синхронизация нужна только на этапе расшифровки, не на каждом
+        раунде маскирования.
+  \item \textbf{\guillemotleft Знают двое — знает семья\guillemotright} —
+        формализовано через compartmented secret sharing (Simmons/Brickell,
+        1990): введён \emph{домохозяйственный след} $h(S)$ — число независимых
+        домохозяйств в скомпрометированном множестве $S$, а не сырое число роботов
+        $|S|$, как корректная единица измерения силы коалиции.
+\end{itemize}
+
+\subsection*{Направление улучшения (arXiv MCP, 2023--2025)}
+
+Целевой поиск через deep-research/arXiv MCP дал более сильную и современную
+альтернативу compartmented-схеме 1990 года:
+
+\begin{itemize}
+  \item \textbf{Verifiable Weighted Secret Sharing} [arXiv:2505.24289, 2025] —
+        вес $\omega_i=1/|H_{j(i)}|$ на робота делает правило
+        \guillemotleft знают двое — знает семья\guillemotright{} прямым следствием
+        весовой формулы, а не отдельной надстройкой; плюс верифицируемость против
+        злонамеренного дилера и 100$\times$ выигрыш по коммуникации против наивной
+        взвешенной VSS.
+  \item \textbf{FedGT} [arXiv:2305.05506, 2023] — group testing поверх той же
+        группировки по домохозяйствам закрывает byzantine-gap, отмеченный в
+        документе~03, тем же организационным примитивом, без отдельного механизма.
+  \item \textbf{Optimal Computational Secret Sharing} [arXiv:2502.02774, 2025] —
+        граница эффективности по размеру доли $\frac{|S|+|K|}{t}$ как ориентир
+        для реализации на ограниченном бортовом хранилище робота.
+\end{itemize}
+
+Предложенное совмещение этих трёх компонентов специально под флот роботов,
+сгруппированных по домохозяйствам, в проверенной литературе не найдено — это
+кандидат на самостоятельный вклад уровня C2/C3 внутри основного security-роадмапа,
+не просто инженерная деталь.
+
+\section{Статус на конец этапа}
+
+\begin{center}
+\begin{tabular}{@{}p{5.5cm}p{9.4cm}@{}}
+\toprule
+Документ & Статус \\
+\midrule
+Artifact-роадмап (HTML) & Опубликован, 9-месячный план по неделям \\
+01 -- FL-основы & Готово, 0 ошибок компиляции \\
+02 -- Архитектура флота & Готово, с примерами и рыночной оценкой \\
+03 -- Shamir/MPC & Готово, byzantine-gap зафиксирован \\
+04 -- Методы агрегации & Готово \\
+05 -- Топологии связи & Готово \\
+06 -- PRSS/HE/compartmented + улучшение & Готово, 6 стр., включает предложение
+  на базе arXiv 2023--2025 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Дальше по плану:} недели 1--2 основного роадмапа (инфраструктура OpenVLA +
+LIBERO, чтение) остаются следующим шагом; предложенная weighted-verifiable
+конструкция из раздела~4 — кандидат на отдельную проверку внутри фазы~2 (недели
+9--10, defense-эксперименты) до того, как она попадёт в финальный текст статьи.
+
+\section{Все использованные источники}
+
+Полный список, по этапам работы; источники, повторяющиеся в нескольких
+документах-матчасти, приведены один раз.
+
+\subsection*{Этап 1 --- аудит исходной заявки}
+
+\begin{itemize}[leftmargin=1.3cm]
+  \item Humbert et al. \emph{One-Shot Federated Conformal Prediction (FedCP\textsuperscript{2}-QQ)}.
+        ICML 2023. \url{https://arxiv.org/abs/2302.06322}
+  \item Plassier et al. \emph{Conformal Prediction for Federated Uncertainty
+        Quantification Under Label Shift (DP-FedCP)}. ICML 2023.
+        \url{https://arxiv.org/abs/2306.05131}
+  \item \emph{FedVLA: Federated Vision-Language-Action Learning}. ICCV 2025.
+        \url{https://arxiv.org/abs/2508.02190}
+  \item \emph{ForgeVLA}. \url{https://arxiv.org/abs/2605.07474}
+  \item \emph{Membership Inference Attacks on Vision-Language-Action Models}.
+        \url{https://arxiv.org/abs/2605.07088}
+  \item \emph{VLALeaks}. \url{https://arxiv.org/html/2606.15165v1}
+  \item Carlini et al. \emph{Extracting Training Data from Large Language
+        Models}. USENIX Security 2021.
+        \url{https://www.usenix.org/system/files/sec21-carlini-extracting.pdf}
+  \item \emph{SoK: Security and Privacy of Foundation-Model-Powered Robots}.
+        \url{https://arxiv.org/pdf/2606.16788}
+  \item \emph{Privacy Risks in Reinforcement Learning for Household Robots}.
+        \url{https://arxiv.org/abs/2306.09273}
+  \item \emph{Fine-Tuning Vision-Language-Action Models (OpenVLA-OFT)}.
+        \url{https://arxiv.org/abs/2502.19645}
+\end{itemize}
+
+\subsection*{Этап 3 --- матчасть по FL (документы 01--05)}
+
+\textbf{01 --- FL-основы}
+\begin{itemize}[leftmargin=1.3cm]
+  \item McMahan et al. \emph{Communication-Efficient Learning of Deep Networks
+        from Decentralized Data (FedAvg)}. AISTATS 2017.
+        \url{https://arxiv.org/abs/1602.05629}
+  \item \emph{Momentum Benefits Non-IID Federated Learning}.
+        \url{https://arxiv.org/abs/2306.16504}
+  \item \emph{FedDRL}. \url{https://arxiv.org/abs/2208.02442}
+  \item \emph{Client Adaptation improves FL with Simulated Non-IID Clients}.
+        \url{https://arxiv.org/abs/2007.04806}
+  \item \emph{Federated Learning Survey: Multi-Level Taxonomy of Aggregation
+        Techniques}. \url{https://arxiv.org/abs/2511.22616}
+\end{itemize}
+
+\textbf{02 --- Архитектура флота}
+\begin{itemize}[leftmargin=1.3cm]
+  \item \emph{Learning While Deploying: Fleet-Scale RL for Generalist Robot
+        Policies}. \url{https://arxiv.org/abs/2605.00416}
+  \item \emph{Advancing Multi-Robot Networks via MLLM-Driven Sensing,
+        Communication, and Computation}. \url{https://arxiv.org/pdf/2604.00061}
+  \item \emph{Offload or Overload}. \url{https://arxiv.org/html/2603.18284}
+  \item \emph{RAPID: Edge-Cloud Partitioned Inference for VLA}.
+        \url{https://arxiv.org/pdf/2603.07949}
+  \item \emph{Robot Fleet Learning via Policy Merging (FLEET-MERGE)}.
+        \url{https://arxiv.org/abs/2310.01362}
+  \item \emph{Open X-Embodiment: Robotic Learning Datasets and RT-X Models}.
+        \url{https://arxiv.org/abs/2310.08864}
+  \item Google DeepMind. \emph{Gemini Robotics On-Device}. deepmind.google
+        (блог).
+  \item \emph{Offline Edge AI Robotics: Air-Gapped Suitcase Robot on Jetson
+        Orin NX}.
+        \url{https://dasroot.net/posts/2026/05/offline-edge-ai-robotics-jetson-orin-nx-gemma-4-air-gapped/}
+  \item \emph{Boosting Productivity with Industrial Robots}.
+        \url{https://www.automate.org/news/industrial-robots-remote-monitoring-and-control-solution-boosts-productivity}
+  \item \emph{Computer Vision at Tesla for Self-Driving Cars}. thinkautonomous.ai.
+  \item \emph{How Amazon deploys robots in its operations facilities}.
+        \url{https://www.aboutamazon.com/news/operations/how-amazon-deploys-robots-in-its-operations-facilities}
+  \item Grand View Research. \emph{Artificial Intelligence In Robotics Market
+        Report}.
+        \url{https://www.grandviewresearch.com/industry-analysis/artificial-intelligence-ai-robotics-market-report}
+\end{itemize}
+
+\textbf{03 --- Shamir/MPC}
+\begin{itemize}[leftmargin=1.3cm]
+  \item A.~Shamir. \emph{How to Share a Secret}. CACM 22(11), 1979.
+  \item Bonawitz et al. \emph{Practical Secure Aggregation for
+        Privacy-Preserving Machine Learning}. ACM CCS 2017.
+        \url{https://dl.acm.org/doi/10.1145/3133956.3133982}
+  \item \emph{PQSF: Post-Quantum Secure Privacy-Preserving FL}. Scientific
+        Reports, 2024.
+  \item \emph{Group Verifiable Secure Aggregate FL Based on Secret Sharing}.
+        \url{https://pmc.ncbi.nlm.nih.gov/articles/PMC11926380/}
+  \item \emph{SoK: Secure Aggregation based on Cryptographic Schemes for FL}.
+        EURECOM.
+        \url{https://www.eurecom.fr/publication/6974/download/comsys-publi-6974.pdf}
+  \item \emph{SABLE: Secure And Byzantine robust LEarning}.
+        \url{https://arxiv.org/abs/2309.05395}
+\end{itemize}
+
+\textbf{04 --- Методы агрегации}
+\begin{itemize}[leftmargin=1.3cm]
+  \item \emph{Asynchronous Hierarchical Federated Learning}.
+        \url{https://arxiv.org/abs/2206.00054}
+  \item \emph{Timely Asynchronous Hierarchical FL: Age of Convergence}.
+        \url{https://arxiv.org/abs/2306.12400}
+  \item \emph{Asynchronous FL on Heterogeneous Devices: A Survey}.
+        \url{https://arxiv.org/abs/2109.04269}
+  \item \emph{Asynchronous Multi-Server FL for Geo-Distributed Clients}.
+        \url{https://arxiv.org/pdf/2406.01439}
+\end{itemize}
+
+\textbf{05 --- Топологии связи}
+\begin{itemize}[leftmargin=1.3cm]
+  \item \emph{Topology-aware Federated Learning in Edge Computing: A
+        Comprehensive Survey}. \url{https://arxiv.org/abs/2302.02573}
+  \item \emph{Decentralized Federated Learning: A Survey and Perspective}.
+        \url{https://arxiv.org/abs/2306.01603}
+  \item \emph{Decentralized Federated Averaging via Random Walk}.
+        \url{https://arxiv.org/abs/2508.21286}
+  \item \emph{Graph-based Gossiping for Communication Efficiency in
+        Decentralized FL}. \url{https://arxiv.org/abs/2506.10607}
+  \item \emph{Privacy-preserving Decentralized FL over Time-varying
+        Communication Graph}. \url{https://arxiv.org/abs/2210.00325}
+  \item \emph{Secure Decentralized FL via Gossip and Virtual Voting}.
+        \url{https://arxiv.org/abs/2607.08651}
+\end{itemize}
+
+\subsection*{Этап 4 --- формализация MPC (документ 06)}
+
+\begin{itemize}[leftmargin=1.3cm]
+  \item Cramer, Damgård, Ishai. \emph{Share Conversion, Pseudorandom
+        Secret-Sharing and Applications to Secure Computation (PRSS)}. TCC 2005.
+        \url{https://link.springer.com/chapter/10.1007/978-3-540-30576-7_19}
+  \item \emph{Generalized Pseudorandom Secret Sharing and Efficient
+        Straggler-Resilient Secure Computation}. Springer, 2021.
+  \item P.~Paillier. \emph{Public-Key Cryptosystems Based on Composite Degree
+        Residuosity Classes}. EUROCRYPT 1999.
+  \item G.~Simmons. \emph{How to (Really) Share a Secret}. CRYPTO 1990;
+        E.~Brickell. \emph{Some Ideal Secret Sharing Schemes}. EUROCRYPT
+        1989/90.
+  \item Shehata, Han, Thyagarajan. \emph{Verifiable Weighted Secret Sharing}.
+        2025. \url{https://arxiv.org/abs/2505.24289}
+  \item Xhemrishi et al. \emph{FedGT: Identification of Malicious Clients in FL
+        with Secure Aggregation}. 2023. \url{https://arxiv.org/abs/2305.05506}
+  \item Aureliano, Cohen, D'Oliveira. \emph{Optimal Computational Secret
+        Sharing}. 2025. \url{https://arxiv.org/abs/2502.02774}
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,125 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+
+\title{Методы агрегации между отправками}
+\author{}
+\date{11 сентября 2026}
+
+\begin{document}
+\maketitle
+
+\section{Что агрегируется}
+
+Стоит различать три независимых по сути объекта агрегации:
+\begin{itemize}
+  \item \textbf{Веса/дельты модели} — классический FedAvg
+        (см.\ раздел \guillemotleft Основы FL\guillemotright).
+  \item \textbf{Статистики} — например, квантили non-conformity score, а не веса
+        модели; агрегируется скаляр или маленький вектор, не полная модель.
+  \item \textbf{Эпизоды опыта} — сырые (или частично обработанные) траектории
+        заливаются в общее хранилище, обучение идёт централизованно уже на них
+        (fleet-scale RL, см.\ отдельный раздел про архитектуру флота).
+\end{itemize}
+
+\section{Как агрегируется}
+
+\begin{description}
+  \item[Простое (взвешенное) усреднение.] FedAvg; деградирует при сильном non-IID.
+  \item[Secure aggregation.] Маскирование + Shamir Secret Sharing
+        \cite{bonawitz2017} (см.\ отдельный раздел); сервер видит только сумму.
+  \item[Робастная агрегация.] Median, trimmed mean, Krum и родственные схемы —
+        защита не от подглядывания, а от byzantine-клиентов, шлющих отравленные
+        обновления \cite{sable2023}.
+  \item[Иерархическая агрегация.] Не все клиенты шлют напрямую на центральный сервер:
+        сначала агрегация внутри кластера (edge-узел), затем кластеры агрегируются
+        между собой \cite{asynchierarchical2022, ageofconvergence2023}. Снижает
+        трафик и добавляет промежуточный уровень доверия/атаки.
+  \item[Асинхронная агрегация.] Сервер не ждёт всех клиентов; обновление применяется
+        сразу по прибытии, с весом, затухающим по staleness (насколько обновление
+        \guillemotleft устарело\guillemotright) \cite{asyncsurvey2021}.
+\end{description}
+
+\section{Client--edge--cloud как конкретная схема}
+
+Работа \emph{Timely Asynchronous Hierarchical Federated Learning: Age of
+Convergence} \cite{ageofconvergence2023} формализует трёхуровневую схему: клиент
+$\to$ edge-сервер (локальная агрегация внутри кластера) $\to$ центральный
+cloud-сервер (глобальная агрегация). Для бытовых роботов это напрашивающаяся
+топология: \guillemotleft дом $\to$ домовой edge-узел $\to$ облако вендора
+\guillemotright, а не плоская звезда \guillemotleft все роботы $\to$ один
+сервер\guillemotright.
+
+\emph{Asynchronous Hierarchical Federated Learning} \cite{asynchierarchical2022}
+уточняет механику: центральный сервер группирует воркеров в кластеры по топологии
+сети, в каждом кластере выбирается локальный агрегатор; финальная агрегация
+взвешивает вклады клиентов параметром staleness — решает проблему разноскоростных
+устройств без блокировки на самого медленного.
+
+Для геораспределённого флота (несколько регионов клиента) релевантна схема с
+несколькими независимыми серверами вместо одного центрального
+\cite{multiserver2024}.
+
+\section{Применение к проекту}
+
+Federated conformal prediction (секьюрная агрегация квантиля non-conformity score)
+из исходной постановки проекта — частный случай \guillemotleft агрегации статистики,
+а не весов\guillemotright{} из раздела выше. Стоит явно назвать это отдельным
+агрегационным раундом с собственным бюджетом приватности, не смешанным с раундом
+агрегации весов VLA-модели: у двух раундов разная чувствительность и разная частота.
+
+\section{Открытый вопрос}
+
+Меняет ли staleness-weighting профиль memorization-атаки на политику? Устаревшее
+обновление может быть как менее, так и более информативным об исходных данных — в
+зависимости от того, насколько модель успела \guillemotleft забыть\guillemotright{}
+между раундами синхронизации. Это не закрыто ни в одном из найденных источников и
+может стать самостоятельным пунктом (C4) поверх уже заявленных в security-роадмапе
+C1--C3.
+
+\section{Тезаурус}
+
+\begin{description}
+  \item[Взвешенное усреднение] Базовый способ агрегации в FedAvg: вклад каждого
+    клиента усредняется пропорционально объёму его локальных данных.
+  \item[Робастная агрегация] Семейство методов (median, trimmed mean, Krum),
+    защищающих итоговый агрегат от небольшого числа испорченных (byzantine)
+    вкладов, а не от подглядывания сервером.
+  \item[Median / trimmed mean] Агрегация по медиане или по среднему после отбрасывания
+    крайних значений — устойчивее к выбросам, чем простое среднее.
+  \item[Krum] Алгоритм робастной агрегации, выбирающий на каждом раунде вклад,
+    ближайший к большинству остальных, вместо усреднения всех.
+  \item[Иерархическая агрегация] Схема, в которой клиенты сначала агрегируются внутри
+    промежуточного кластера (например, edge-узла), и только затем кластеры
+    агрегируются между собой на верхнем уровне.
+  \item[Асинхронная агрегация] Сервер применяет обновление сразу по прибытии, не
+    дожидаясь всех клиентов, с весом, ослабленным по staleness.
+  \item[Staleness] Мера того, насколько обновление клиента \guillemotleft
+    устарело\guillemotright{} к моменту применения — чем больше раундов прошло с
+    момента его получения весов, тем выше staleness.
+  \item[Client--edge--cloud] Трёхуровневая топология агрегации: клиент $\to$
+    промежуточный edge-сервер $\to$ центральный облачный сервер.
+  \item[Geo-distributed multi-server] Схема с несколькими независимыми серверами
+    агрегации в разных географических регионах вместо одного центрального.
+\end{description}
+
+\begin{thebibliography}{9}
+\bibitem{bonawitz2017} K.~Bonawitz et al. \emph{Practical Secure Aggregation for
+  Privacy-Preserving Machine Learning}. ACM CCS, 2017.
+\bibitem{sable2023} \emph{SABLE: Secure And Byzantine robust LEarning}.
+  arXiv:2309.05395, 2023.
+\bibitem{asynchierarchical2022} \emph{Asynchronous Hierarchical Federated Learning}.
+  arXiv:2206.00054, 2022.
+\bibitem{ageofconvergence2023} \emph{Timely Asynchronous Hierarchical Federated
+  Learning: Age of Convergence}. arXiv:2306.12400, 2023.
+\bibitem{asyncsurvey2021} \emph{Asynchronous Federated Learning on Heterogeneous
+  Devices: A Survey}. arXiv:2109.04269, 2021.
+\bibitem{multiserver2024} \emph{Asynchronous Multi-Server Federated Learning for
+  Geo-Distributed Clients}. arXiv:2406.01439, 2024.
+\end{thebibliography}
+
+\end{document}

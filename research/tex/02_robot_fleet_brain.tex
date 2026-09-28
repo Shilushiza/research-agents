@@ -1,0 +1,245 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T2A]{fontenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage[margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta}
+
+\title{Где находится «мозг» робота: архитектура флота}
+\author{}
+\date{11 сентября 2026}
+
+\begin{document}
+\maketitle
+
+\section{Постановка вопроса}
+
+При обучении группы роботов не существует единственно верного ответа «мозг вынесен»
+или «мозг в машине» — на практике используется гибридная схема, и то, как именно она
+устроена, определяет threat model: кто видит обновления модели, кто видит только
+действия робота.
+
+\section{Три наблюдаемые архитектуры}
+
+\begin{center}
+\begin{tabular}{@{}p{3.2cm}p{3.6cm}p{3.6cm}p{4cm}@{}}
+\toprule
+Архитектура & Inference & Обучение & Синхронность между роботами \\
+\midrule
+Fully local & на роботе & на роботе (редко) & нет: каждый автономен, знания не
+  расходятся \\
+Edge-cloud hybrid & на роботе (латентность) & периодически в облаке & да, но с
+  задержкой — обновлённая политика раскатывается пакетом \\
+Fleet-scale RL \cite{fleetscale2026} & на роботе & versioned-snapshot data plane в
+  облаке & почти-непрерывно, но асинхронно (каждый робот на своей версии до
+  следующего снэпшота) \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Работа \emph{Learning While Deploying: Fleet-Scale Reinforcement Learning for
+Generalist Robot Policies} \cite{fleetscale2026} описывает именно третий режим:
+edge-роботы копят наблюдения локально и заливают эпизоды в object storage через
+versioned-snapshot data plane; центральный координатор управляет снэпшотами, роботы
+периодически подтягивают свежую политику, а не синхронизируются мгновенно.
+
+\section{Конкретные примеры каждого подхода}
+
+\subsection*{Fully local}
+\begin{itemize}
+  \item \textbf{Gemini Robotics On-Device} \cite{geminiondevice2026} — компактная
+        VLA-модель DeepMind, выполняющая составные манипуляционные задачи
+        (расстегнуть сумку, сложить бельё) полностью офлайн, без обращения к облаку
+        на инференсе.
+  \item \textbf{Air-gapped suitcase robot на Jetson Orin NX} \cite{jetsonairgapped2026}
+        — робот для GPS-denied сред без сетевого подключения вовсе; локальный
+        инференс Gemma-4 (E4B) с TensorRT, sub-200~мс отклик на обнаружение угроз,
+        нулевой простой по сетевым причинам by design.
+  \item \textbf{Промышленные манипуляторы с намеренно исключённым облаком}
+        \cite{automateorg2026} — часть промышленных решений сознательно обходит
+        облачную инфраструктуру целиком ради снижения кибер-риска; управление и
+        (при наличии) дообучение остаются на предприятии.
+\end{itemize}
+
+\subsection*{Edge-cloud hybrid}
+\begin{itemize}
+  \item \textbf{Tesla Autopilot/FSD} \cite{teslafsd2026} — инференс локально в
+        автомобиле; в shadow mode модель параллельно человеку принимает решения,
+        расхождения и «дизенгейджменты» отправляются в облако (пайплайн обрабатывает
+        порядка 400~тыс.\ видеоклипов в секунду по флоту), переобучение — на
+        суперкомпьютере Dojo, обновлённая модель раскатывается обратно во флот
+        пакетом (firmware push), не поэпизодно.
+  \item \textbf{Amazon Proteus/Sparrow + DeepFleet} \cite{amazondeepfleet2026} —
+        локальное sensing и навигация на роботе (Proteus избегает препятствий и людей
+        автономно), а координация флота (маршруты, зарядка, распределение задач)
+        управляется облачной generative-AI моделью DeepFleet поверх множества
+        устройств одновременно.
+\end{itemize}
+
+\subsection*{Fleet-scale RL / централизованный пул данных}
+\begin{itemize}
+  \item \textbf{Open X-Embodiment / RT-X} \cite{openxembodiment2023} — 34
+        исследовательские лаборатории слили 60 датасетов (1M+ траекторий, 22 типа
+        роботов) в единый пул; RT-1-X/RT-2-X обучены централизованно на этом пуле —
+        обучение происходит не «на роботе», а на агрегированном датасете флота
+        целиком.
+  \item \textbf{Learning While Deploying} \cite{fleetscale2026} — сам архитектурный
+        паттерн versioned-snapshot data plane (см.\ выше): эпизоды заливаются в
+        object storage, обучение идёт центральным learner'ом, роботы периодически
+        подтягивают свежий снэпшот политики.
+\end{itemize}
+
+\subsection*{Реальная рыночная оценка}
+
+Фактическая оценка одного аналитического агентства, а не самостоятельно собранная
+подборка примеров: Grand View Research в отчёте \emph{Artificial
+Intelligence In Robotics Market} \cite{gvrairobotics2025} даёт разбивку рынка ИИ в
+робототехнике по способу развёртывания за 2025 год: сегмент
+\textbf{on-premise} (вычисления на месте — устройство/локальная инфраструктура
+предприятия) занимает \textbf{73\%} рыночной выручки, сегмент
+\textbf{cloud} (централизованные облачные AI-стеки, часто в модели
+robot-as-a-service) — оставшиеся \textbf{27\%}; при этом cloud-сегмент прогнозируется
+как самый быстрорастущий по CAGR на 2026--2033.
+
+\begin{center}
+\begin{tikzpicture}[scale=1.05]
+  \def\rad{3.0}
+  % On-premise: 73% -> 262.8 deg, from 90 to 90-262.8=-172.8
+  \draw[fill=blue!55!black, draw=white, thick] (0,0) -- (90:\rad) arc (90:-172.8:\rad) -- cycle;
+  % Cloud: 27% -> 97.2 deg, from -172.8 to -270 (=90)
+  \draw[fill=orange!85!red, draw=white, thick] (0,0) -- (-172.8:\rad) arc (-172.8:-270:\rad) -- cycle;
+  \node[white, font=\bfseries] at (-41.4:{\rad*0.6}) {73\%};
+  \node[white, font=\bfseries] at (-221.4:{\rad*0.6}) {27\%};
+\end{tikzpicture}\\[4pt]
+\begin{tikzpicture}
+  \draw[fill=blue!55!black] (0,0) rectangle (0.35,0.35); \node[right] at (0.45,0.17) {\small On-premise (73\% рыночной выручки, 2025)};
+  \draw[fill=orange!85!red] (6.3,0) rectangle (6.65,0.35); \node[right] at (6.75,0.17) {\small Cloud (27\%, самый быстрорастущий сегмент)};
+\end{tikzpicture}
+\end{center}
+
+\textbf{Важные оговорки, без которых эта цифра вводит в заблуждение:}
+\begin{itemize}
+  \item Это доля \emph{рыночной выручки} (\$), а не доля \emph{количества роботов} и
+        не доля вычислительных архитектур — крупный on-premise-контракт (завод,
+        оборонное предприятие) весит в этой цифре как угодно много, независимо от
+        числа физических роботов.
+  \item Таксономия отчёта \textbf{двухстороняя} (on-premise / cloud), а не
+        трёхсторонняя, как в разделе выше (fully local / edge-cloud hybrid /
+        fleet-scale пул). \guillemotleft On-premise\guillemotright{} в терминологии
+        Grand View Research, вероятно, включает в себя и по-настоящему локальные
+        системы, и часть edge-cloud hybrid (там, где обучение/агрегация происходит на
+        серверах предприятия, а не в публичном облаке вендора) — то есть не
+        эквивалентно нашей категории \guillemotleft fully local\guillemotright.
+  \item Оценка одного агентства, без публичной методологии подсчёта (не census, а
+        аналитическая модель) — для сопоставления стоило бы свести с 2--3
+        независимыми отчётами (Fortune Business Insights, Precedence Research),
+        что не входит в объём этого ресёрча.
+\end{itemize}
+
+Тем не менее это единственная найденная в этом ресёрче цифра, которая хоть
+как-то количественно отвечает на вопрос \guillemotleft какая доля сейчас работает
+локально против облачно\guillemotright, и она согласуется с качественным выводом
+из примеров выше: локальное/on-premise исполнение пока доминирует по объёму
+развёртывания, а облачная/пул-модель — быстрее растёт, но с меньшей базы.
+
+\section{Почему inference не может быть полностью облачным}
+
+Обзор мультиагентных сетей на базе MLLM \cite{mllmsurvey2026} приводит количественное
+объяснение: mobile edge computing (MEC), интегрированный в 5G, даёт задержку
+5--10~мс против $>$50~мс у чисто облачного инференса. Для контура управления робота
+это критично — контроль требует локального (или edge-локального) исполнения политики.
+Измерительное исследование \cite{offloadoverload2026} на реальных манипуляционных
+workload напрямую подтверждает trade-off: offloading снимает вычислительные
+ограничения устройства, но добавочная сетевая задержка деградирует точность задачи.
+Работа \emph{RAPID} \cite{rapid2026} явно разбивает VLA-инференс между edge и cloud,
+достигая end-to-end задержки 222.9~мс, — прямое доказательство, что современные
+VLA-флоты используют \emph{смешанную}, а не единую архитектуру инференса.
+
+\section{Крайний случай: обучение без взаимодействия}
+
+\emph{Robot Fleet Learning via Policy Merging} (FLEET-MERGE) \cite{fleetmerge2023}
+описывает принципиально иной режим: роботы обучаются полностью автономно на своих
+данных, а политики сливаются \emph{постфактум} — с учётом перестановочной инвариантности
+рекуррентных контроллеров. В этом режиме «мозг» не разделяется во время обучения
+вообще; агрегация происходит один раз, offline, над уже готовыми весами.
+
+\section{Следствие для модели угроз}
+
+Для privacy-анализа флота роботов важно зафиксировать одну конкретную архитектуру, а
+не рассуждать абстрактно: \emph{inference} почти всегда локален (задержка контура
+управления не допускает облака), а \emph{накопление опыта флота} вынесено в
+агрегатор. Атака на приватность целится именно в обновления, которые едут в облако
+(gray-box, агрегатор видит их) или в наблюдаемые выходы развёрнутой политики
+(black-box, внешний наблюдатель видит только действия) — но не в сам факт локального
+инференса, который приватен по построению архитектуры.
+
+\section{Тезаурус}
+
+\begin{description}
+  \item[Inference] Применение уже обученной модели к новому наблюдению (в отличие от
+    обучения — нет обновления весов).
+  \item[Edge computing] Вычисления на устройстве рядом с источником данных (сам робот
+    или локальный узел рядом), а не в удалённом облачном датацентре.
+  \item[MEC (Mobile Edge Computing)] Разновидность edge computing, интегрированная в
+    мобильные/телеком-сети (например, в 5G), дающая низкую задержку по сравнению с
+    полностью облачной обработкой.
+  \item[Edge-cloud hybrid] Архитектура, где инференс идёт локально на устройстве, а
+    обучение/переобучение — периодически в облаке с последующей раскаткой обновлённой
+    модели обратно.
+  \item[Fleet-scale RL] Обучение с подкреплением, использующее опыт, накопленный
+    целым флотом устройств, а не одним.
+  \item[Versioned-snapshot data plane] Инфраструктура, в которой роботы заливают
+    эпизоды опыта в объектное хранилище, а координатор версионирует снэпшоты
+    обучающих данных/политики, которые роботы периодически подтягивают.
+  \item[Policy merging] Слияние весов уже обученных независимо политик постфактум
+    (offline), без взаимодействия роботов во время самого обучения.
+  \item[Permutation invariance] Свойство нейросети (особенно рекуррентной) давать
+    эквивalентный результат при перестановке внутренних нейронов — учитывается при
+    слиянии весов разных обученных экземпляров.
+  \item[Gray-box / black-box (модель угроз)] Gray-box — атакующий видит внутренние
+    обновления модели (например, агрегатор). Black-box — атакующий видит только
+    внешние выходы развёрнутой системы (например, действия робота).
+  \item[On-premise] Развёртывание вычислительной инфраструктуры на территории/
+    серверах самого предприятия-заказчика, а не в публичном облаке вендора; не то же
+    самое, что \guillemotleft fully local\guillemotright{} на уровне отдельного
+    робота.
+  \item[RaaS (Robot-as-a-Service)] Бизнес-модель, при которой робота не покупают, а
+    арендуют по подписке у вендора вместе с облачным AI-стеком и его обновлениями.
+  \item[CAGR] Compound Annual Growth Rate — среднегодовой темп роста рынка/сегмента
+    за период, стандартная метрика в отчётах рыночных аналитиков.
+\end{description}
+
+\begin{thebibliography}{9}
+\bibitem{fleetscale2026} \emph{Learning While Deploying: Fleet-Scale Reinforcement
+  Learning for Generalist Robot Policies}. arXiv:2605.00416, 2026.
+\bibitem{mllmsurvey2026} \emph{Advancing Multi-Robot Networks via MLLM-Driven Sensing,
+  Communication, and Computation: A Comprehensive Survey}. arXiv:2604.00061, 2026.
+\bibitem{offloadoverload2026} \emph{Offload or Overload: A Platform Measurement Study
+  of Mobile Robotic Manipulation Workloads}. arXiv:2603.18284, 2026.
+\bibitem{rapid2026} \emph{RAPID: Redundancy-Aware and Compatibility-Optimal
+  Edge-Cloud Partitioned Inference for Diverse VLA Models}. arXiv:2603.07949, 2026.
+\bibitem{fleetmerge2023} \emph{Robot Fleet Learning via Policy Merging}.
+  arXiv:2310.01362, 2023.
+\bibitem{geminiondevice2026} Google DeepMind. \emph{Gemini Robotics On-Device}.
+  deepmind.google, 2026.
+\bibitem{jetsonairgapped2026} \emph{Offline Edge AI Robotics: Building a Fully
+  Air-Gapped Suitcase Robot on Jetson Orin NX}. dasroot.net, 2026.
+\bibitem{automateorg2026} \emph{Boosting Productivity with Industrial Robots: A
+  Look at Remote Monitoring and Control Solutions}. automate.org, 2026.
+\bibitem{teslafsd2026} \emph{Computer Vision at Tesla for Self-Driving Cars};
+  Tesla FSD shadow mode and Dojo training pipeline (public engineering
+  disclosures), 2026.
+\bibitem{amazondeepfleet2026} \emph{How Amazon deploys robots in its operations
+  facilities: Proteus, Sparrow, DeepFleet}. aboutamazon.com, 2025--2026.
+\bibitem{openxembodiment2023} \emph{Open X-Embodiment: Robotic Learning Datasets
+  and RT-X Models}. arXiv:2310.08864, 2023.
+\bibitem{gvrairobotics2025} Grand View Research. \emph{Artificial Intelligence In
+  Robotics Market Report, 2026--2033} — deployment segmentation (on-premise 73\%,
+  cloud 27\%, 2025). grandviewresearch.com, 2025.
+\end{thebibliography}
+
+\end{document}
